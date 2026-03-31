@@ -1,9 +1,26 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+dotenv.config();
+
 import { validateEnv } from "./env-check";
+import { debugLog } from "./debug";
+import { ENV } from "./env";
 
 // ── Validate all required env vars before anything else loads ──────────────
 console.log("\n── Environment Check ─────────────────────────────────────────");
 validateEnv();
+
+if (!process.env.SERP_API_KEY) {
+  throw new Error("SERP_API_KEY missing in environment.");
+}
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL missing in environment.");
+}
+
+debugLog("ENV CHECK", {
+  SERP_API_KEY: ENV.serpApiKey,
+  NODE_ENV: process.env.NODE_ENV
+});
 
 import express from "express";
 import { createServer } from "http";

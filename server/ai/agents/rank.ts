@@ -1,5 +1,6 @@
 import { env, pipeline, RawImage } from "@xenova/transformers";
 import { AgentState, SearchResult } from "../state";
+import { debugLog } from "../../_core/debug";
 
 // Prevent local downloading errors if node environment disables local cache
 env.allowLocalModels = false;
@@ -81,9 +82,12 @@ export async function rankNode(state: AgentState): Promise<Partial<AgentState>> 
     });
 
     const scoredResults = await Promise.all(scoredPromises);
+    debugLog("RAW RESULTS", state.results);
 
     // Descending sort based on cosine similarity score
     scoredResults.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    debugLog("RANKED RESULTS", scoredResults);
 
     // Log the top match out to verify distribution
     console.log(`Top match score: ${scoredResults[0]?.score}`);

@@ -1,4 +1,5 @@
 import { AgentState } from "../state";
+import { debugLog } from "../../_core/debug";
 import { z } from "zod";
 import { ENV } from "../../_core/env";
 import { getGeminiClient } from "../../_core/gemini";
@@ -14,6 +15,7 @@ export async function refineNode(state: AgentState): Promise<Partial<AgentState>
   console.log("--- REFINE AGENT ---");
 
   const currentQuery = state.searchQuery || state.description;
+  debugLog("REFINE INPUT", currentQuery);
 
   if (!currentQuery) {
     console.warn("No baseline query available to refine. Iterating blindly.");
@@ -62,6 +64,8 @@ Provide your response strictly in JSON format matching this exact schema:
 
     const parsed = JSON.parse(content);
     const validated = RefineOutputSchema.parse(parsed);
+
+    debugLog("REFINE OUTPUT", validated.improvedQuery);
 
     console.log(`New highly precise query formulated: "${validated.improvedQuery}"`);
 

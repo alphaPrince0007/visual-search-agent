@@ -6,6 +6,7 @@ import { visionCache, LRUCache } from "../cache";
 import { withTimeout, TIMEOUTS } from "../pipeline";
 import { ENV } from "../../_core/env";
 import { getGeminiClient, imageUrlToInlinePart } from "../../_core/gemini";
+import { debugLog } from "../../_core/debug";
 
 const VisionOutputSchema = z.object({
   description: z.string(),
@@ -17,6 +18,7 @@ const VisionOutputSchema = z.object({
  */
 export async function visionNode(state: AgentState): Promise<Partial<AgentState>> {
   console.log("--- VISION AGENT ---");
+  debugLog("VISION INPUT", state.imagePath);
 
   if (!state.imagePath) {
     console.warn("No imagePath provided to Vision Agent. Skipping.");
@@ -98,6 +100,11 @@ Analyze the provided image and respond strictly in JSON format matching the foll
 
     visionCache.set(cacheKey, validated);
     console.log(`[Cache SET] Vision result cached (key: ${cacheKey})`);
+
+    debugLog("VISION OUTPUT", {
+      description: validated.description,
+      searchQuery: validated.searchQuery
+    });
 
     return {
       description: validated.description,

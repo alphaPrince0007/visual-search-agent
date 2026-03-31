@@ -4,6 +4,7 @@ import { storagePut } from "../storage";
 import { createSearch, updateSearch, getUserSearches, getSearchById, createSearchHistory, getSearchHistory, createResults, getResultsForSearch } from "../db";
 import { agentGraph } from "../ai/graph";
 import { nanoid } from "nanoid";
+import { debugLog } from "../_core/debug";
 
 /**
  * Visual Search Router
@@ -16,45 +17,80 @@ export const visualSearchRouter = router({
       mimeType: z.string().describe("MIME type of the image (e.g., image/jpeg)"),
     }))
     .mutation(async ({ ctx, input }) => {
+      console.log("🔥 SEARCH API HIT");
       try {
-        const fileName = `visual-search/${ctx.user.id}/${nanoid()}.${input.mimeType.split("/")[1]}`;
+        const safeUserId = ctx.user?.id || "guest";
+        const fileName = `visual-search/${safeUserId}/${nanoid()}.${input.mimeType.split("/")[1]}`;
         const imageBuffer = Buffer.from(input.imageBase64, "base64");
         const { url: imageUrl } = await storagePut(fileName, imageBuffer, input.mimeType);
 
         console.log(`Starting autonomous visual mapping graph for: ${imageUrl}`);
-        const finalState = await agentGraph.invoke({ imagePath: imageUrl });
+        
+        if (!imageUrl || imageUrl.includes("undefined")) {
+          throw new Error("Invalid or missing imagePath");
+        }
 
-        const search = await createSearch({
-          userId: ctx.user.id,
-          imagePath: imageUrl,
-          query: finalState.description || "Parsed image",
-        });
+        const initialState = { imagePath: imageUrl };
+        debugLog("GRAPH STATE", initialState);
+        console.log("🚀 BEFORE GRAPH");
+        const finalState = await agentGraph.invoke(initialState);
+        console.log("✅ AFTER GRAPH", finalState);
+        console.log("GRAPH RESULT:", finalState);
 
-        if (!search) throw new Error("Database failed to commit search row.");
+        const resultsData = finalState.rankedResults || finalState.results || [];
+        console.log("RESULT COUNT:", resultsData.length);
 
-        if (Array.isArray(finalState.rankedResults)) {
-            const parsedResults = finalState.rankedResults
-              .slice(0, 50)
-              .map((r: any) => ({
+        let searchId: number | null = null;
+        let dbWarning: string | null = null;
+
+        try {
+          const search = await createSearch({
+            userId: ctx.user?.id || 0,
+            imagePath: imageUrl,
+            query: finalState.description,
+          });
+
+          if (search) {
+            searchId = search.id;
+            console.log("SEARCH ID:", searchId);
+
+            if (resultsData.length > 0) {
+              const parsedResults = resultsData.slice(0, 50).map((r: any) => ({
                 searchId: search.id,
                 imageUrl: r.thumbnail || r.link || "",
                 score: r.score || 0
-            }));
-            if (parsedResults.length > 0) {
-                await createResults(parsedResults);
+              }));
+              await createResults(parsedResults);
+            } else {
+              console.warn("No results found from search");
             }
+          } else {
+             dbWarning = "Database failed to compute search row";
+          }
+        } catch (dbErr) {
+          console.error("DB ERROR:", dbErr);
+          dbWarning = dbErr instanceof Error ? dbErr.message : "Persistence failure";
         }
 
-        const storedResults = await getResultsForSearch(search.id);
-
-        return {
+        const finalOutput = {
           success: true,
-          searchId: search.id,
-          imageUrl: search.imagePath,
-          imageDescription: search.query,
-          visualMatches: storedResults,
+          warning: dbWarning,
+          data: {
+            searchId: searchId,
+            imageUrl: imageUrl,
+            imageDescription: finalState.description,
+            visualMatches: finalState.rankedResults || finalState.results || [],
+            searchQuery: finalState.searchQuery,
+            generatedImages: finalState.generatedImages || []
+          }
         };
+
+        debugLog("FINAL OUTPUT", finalOutput);
+        console.log("📤 RESPONSE SENT");
+        return finalOutput;
       } catch (error) {
+        console.error("❌ SEARCH FAILED:", error);
+        debugLog("FINAL ERROR", error);
         return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
       }
     }),
@@ -82,34 +118,48 @@ export const visualSearchRouter = router({
             iterations: historyCount
         });
 
-        await createSearchHistory({
-          searchId: input.searchId,
-          refinementQuery: input.refinementQuery,
-          refinementNumber: historyCount + 1,
-        });
+        console.log("GRAPH RESULT (Refine):", finalState);
+        const resultsData = finalState.rankedResults || finalState.results || [];
+        console.log("RESULT COUNT:", resultsData.length);
 
-        if (Array.isArray(finalState.rankedResults)) {
-            // Push new refined results natively
-            const parsedResults = finalState.rankedResults
-              .slice(0, 50)
-              .map((r: any) => ({
-                searchId: originalSearch.id,
-                imageUrl: r.thumbnail || r.link || "",
-                score: r.score || 0
-            }));
-            if (parsedResults.length > 0) {
-                await createResults(parsedResults);
-            }
+        let dbWarning: string | null = null;
+
+        try {
+          await createSearchHistory({
+            searchId: input.searchId,
+            refinementQuery: input.refinementQuery,
+            refinementNumber: historyCount + 1,
+          });
+
+          if (resultsData.length > 0) {
+              // Push new refined results natively
+              const parsedResults = resultsData
+                .slice(0, 50)
+                .map((r: any) => ({
+                  searchId: originalSearch.id,
+                  imageUrl: r.thumbnail || r.link || "",
+                  score: r.score || 0
+              }));
+              await createResults(parsedResults);
+          } else {
+              console.warn("No refined results found");
+          }
+        } catch (dbErr) {
+          console.error("DB ERROR (Refine):", dbErr);
+          dbWarning = dbErr instanceof Error ? dbErr.message : "History persistence failure";
         }
-
-        const updatedResults = await getResultsForSearch(originalSearch.id);
 
         return {
           success: true,
-          visualMatches: updatedResults,
-          refinementCount: historyCount + 1,
+          warning: dbWarning,
+          data: {
+            visualMatches: finalState.rankedResults || finalState.results || [],
+            refinementCount: historyCount + 1,
+            generatedImages: finalState.generatedImages || []
+          }
         };
       } catch (error) {
+        console.error("❌ REFINE FAILED:", error);
         return { success: false, error: error instanceof Error ? error.message : "Failure" };
       }
     }),

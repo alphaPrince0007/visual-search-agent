@@ -2,12 +2,14 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, searches, searchHistory, results, Search, SearchHistory, Result, InsertSearch, InsertSearchHistory, InsertResult } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { debugLog } from "./_core/debug";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
+    console.log("DB URL:", process.env.DATABASE_URL);
     try {
       _db = drizzle(process.env.DATABASE_URL);
     } catch (error) {
@@ -100,14 +102,18 @@ export async function createSearch(data: InsertSearch): Promise<Search | null> {
   }
 
   try {
+    debugLog("DB INSERT INPUT", data);
     const result = await db.insert(searches).values(data);
     const insertedId = (result as any).insertId;
     if (insertedId) {
       const inserted = await db.select().from(searches).where(eq(searches.id, insertedId)).limit(1);
-      return inserted.length > 0 ? inserted[0] : null;
+      const searchRecord = inserted.length > 0 ? inserted[0] : null;
+      debugLog("DB INSERT SUCCESS", searchRecord);
+      return searchRecord;
     }
     return null;
   } catch (error) {
+    debugLog("DB ERROR", error);
     console.error("[Database] Failed to create search:", error);
     throw error;
   }

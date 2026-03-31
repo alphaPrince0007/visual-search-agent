@@ -1,5 +1,6 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { ENV } from './_core/env';
+import { debugLog } from './_core/debug';
 
 // Explicitly configure Cloudinary using our ENV object
 if (ENV.cloudinaryUrl) {
@@ -57,6 +58,8 @@ export async function storagePut(
       if (!result) {
         return reject(new Error("Cloudinary upload failed: No result returned"));
       }
+
+      debugLog("UPLOAD RESULT", result);
 
       resolve({
         key: result.public_id,

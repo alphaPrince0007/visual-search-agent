@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 export const ENV = {
   // ── App core ────────────────────────────────────────────────────────────────
   appId:          process.env.VITE_APP_ID        ?? "",
@@ -13,7 +16,7 @@ export const ENV = {
   // ── AI / external services ───────────────────────────────────────────────────
   openAiKey:      process.env.OPENAI_API_KEY     ?? "",
   googleApiKey:   process.env.GOOGLE_API_KEY     ?? "",
-  serpApiKey:     process.env.SERPAPI_API_KEY    ?? "",
+  serpApiKey:     process.env.SERP_API_KEY       ?? "",
 
   /** Google AI Studio / Gemini API key (falls back to GOOGLE_API_KEY). */
   geminiApiKey:   process.env.GEMINI_API_KEY     ?? process.env.GOOGLE_API_KEY ?? "",

@@ -88,6 +88,7 @@ export default function VisualSearch() {
       return;
     }
 
+    console.log("🚀 SEARCH BUTTON CLICKED");
     setIsSearching(true);
     try {
       const base64Data = selectedImage.split(",")[1];
@@ -98,15 +99,28 @@ export default function VisualSearch() {
         mimeType,
       });
 
-      if (result.success) {
+      console.log("✅ RESULT RECEIVED:", result);
+
+      if (result.success === true && 'data' in result && result.data) {
+        const data = result.data;
+        if (result.warning) {
+          toast.warning(`Notice: ${result.warning}`);
+        }
+        
+        const mappedResults: VisualMatch[] = data.visualMatches.map((res: any, index: number) => ({
+          id: index,
+          imageUrl: res.thumbnail || res.link || res.url || "",
+          score: res.score || 0
+        }));
+
         setSearchResult({
-          searchId: result.searchId,
-          imageUrl: result.imageUrl,
-          imageDescription: result.imageDescription ?? undefined,
-          visualMatches: result.visualMatches || [],
+          searchId: data.searchId ?? undefined,
+          imageUrl: data.imageUrl,
+          imageDescription: data.imageDescription ?? undefined,
+          visualMatches: mappedResults,
         });
         toast.success("Search completed!");
-      } else {
+      } else if (result.success === false && 'error' in result) {
         toast.error(result.error || "Search failed");
       }
     } catch (error) {
@@ -130,14 +144,28 @@ export default function VisualSearch() {
         refinementQuery,
       });
 
-      if (result.success) {
-        setSearchResult((prev) => ({
-          ...prev!,
-          visualMatches: result.visualMatches || [],
+      if (result.success === true && 'data' in result && result.data) {
+        const data = result.data;
+        if (result.warning) {
+          toast.warning(`Notice: ${result.warning}`);
+        }
+
+        const mappedResults: VisualMatch[] = data.visualMatches.map((res: any, index: number) => ({
+          id: index,
+          imageUrl: res.thumbnail || res.link || res.url || "",
+          score: res.score || 0
         }));
+
+        setSearchResult((prev: SearchResult | null) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            visualMatches: mappedResults,
+          };
+        });
         setRefinementQuery("");
         toast.success("Search refined!");
-      } else {
+      } else if (result.success === false && 'error' in result) {
         toast.error(result.error || "Refinement failed");
       }
     } catch (error) {
