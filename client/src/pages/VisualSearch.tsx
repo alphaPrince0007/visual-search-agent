@@ -6,6 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Upload, Search, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
+import { Download, Sparkles } from "lucide-react";
 
 interface VisualMatch {
   id: number;
@@ -18,6 +21,7 @@ interface SearchResult {
   imageUrl?: string;
   imageDescription?: string;
   visualMatches: VisualMatch[];
+  generatedImages?: string[];
 }
 
 export default function VisualSearch() {
@@ -33,6 +37,62 @@ export default function VisualSearch() {
 
   const initiateSearchMutation = trpc.visualSearch.initiateSearch.useMutation();
   const refineSearchMutation = trpc.visualSearch.refineSearch.useMutation();
+  const [isZipping, setIsZipping] = useState(false);
+
+  const handleDownloadZip = async () => {
+    if (!searchResult) return;
+    setIsZipping(true);
+    const zip = new JSZip();
+    const folder = zip.folder("visual-search-results");
+
+    try {
+      // 1. Add original image
+      if (previewUrl) {
+         const response = await fetch(previewUrl);
+         const blob = await response.blob();
+         folder?.file("original_upload.png", blob);
+      }
+
+      // 2. Add AI Generated Variations
+      if (searchResult.generatedImages) {
+        searchResult.generatedImages.forEach((base64, index) => {
+          const data = base64.split(",")[1];
+          folder?.file(`generated_variation_${index + 1}.png`, data, { base64: true });
+        });
+      }
+
+      // 3. Add Visual Matches (via proxy)
+      const matchPromises = searchResult.visualMatches.map(async (match, index) => {
+        try {
+          const proxiedUrl = `/api/proxy/image?url=${encodeURIComponent(match.imageUrl)}`;
+          const response = await fetch(proxiedUrl);
+          if (!response.ok) throw new Error("Proxy failed");
+          const blob = await response.blob();
+          const ext = match.imageUrl.split(".").pop()?.split(/[?#]/)[0] || "jpg";
+          folder?.file(`match_${index + 1}.${ext}`, blob);
+        } catch (err) {
+          console.warn(`Failed to download match ${index + 1}:`, err);
+        }
+      });
+
+      await Promise.all(matchPromises);
+
+      const content = await zip.generateAsync({ 
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: {
+          level: 9
+        }
+      });
+      saveAs(content, `search_results_${searchResult.searchId || "export"}.zip`);
+      toast.success("ZIP download started!");
+    } catch (error) {
+      console.error("ZIP Generation Error:", error);
+      toast.error("Failed to generate ZIP");
+    } finally {
+      setIsZipping(false);
+    }
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -118,6 +178,7 @@ export default function VisualSearch() {
           imageUrl: data.imageUrl,
           imageDescription: data.imageDescription ?? undefined,
           visualMatches: mappedResults,
+          generatedImages: data.generatedImages || [],
         });
         toast.success("Search completed!");
       } else if (result.success === false && 'error' in result) {
@@ -161,6 +222,7 @@ export default function VisualSearch() {
           return {
             ...prev,
             visualMatches: mappedResults,
+            generatedImages: data.generatedImages || prev.generatedImages || [],
           };
         });
         setRefinementQuery("");
@@ -325,11 +387,57 @@ export default function VisualSearch() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">
-                      Ranked Matches ({searchResult.visualMatches.length})
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">
+                        Ranked Matches ({searchResult.visualMatches.length})
+                      </CardTitle>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="gap-2" 
+                        onClick={handleDownloadZip}
+                        disabled={isZipping}
+                      >
+                        {isZipping ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Zipping...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4" />
+                            Download All (ZIP)
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent>
+                    {/* Generated Images Section */}
+                    {searchResult.generatedImages && searchResult.generatedImages.length > 0 && (
+                      <div className="mb-8">
+                        <div className="flex items-center gap-2 mb-4">
+                          <Sparkles className="w-4 h-4 text-blue-500" />
+                          <h3 className="text-sm font-semibold text-slate-900">AI Generated Variations</h3>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          {searchResult.generatedImages.map((b64, idx) => (
+                            <div key={idx} className="relative group rounded-lg overflow-hidden border border-blue-100 shadow-sm aspect-square bg-slate-50">
+                              <img 
+                                src={b64} 
+                                alt={`Generated variation ${idx + 1}`} 
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
+                              <div className="absolute top-2 right-2 bg-blue-500/90 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">
+                                AI Variation
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-6 border-b border-slate-100"></div>
+                      </div>
+                    )}
+
                     {searchResult.visualMatches.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         {searchResult.visualMatches.map((match) => (

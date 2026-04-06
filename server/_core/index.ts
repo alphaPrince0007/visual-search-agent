@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config();
+import axios from "axios";
 
 import { validateEnv } from "./env-check";
 import { debugLog } from "./debug";
@@ -72,7 +73,25 @@ async function startServer() {
   app.use("/api", apiRateLimiter);                           // 100 req / 15 min
   app.use("/api/trpc/visualSearch.initiateSearch", searchRateLimiter); // 10 req / 15 min
 
-  // ── 4. Routes ──────────────────────────────────────────────────────────────
+  // ── 4. Image Proxy (CORS bypass) ───────────────────────────────────────────
+  app.get("/api/proxy/image", async (req, res) => {
+    const imageUrl = req.query.url as string;
+    if (!imageUrl) return res.status(400).send("URL required");
+
+    try {
+      const response = await axios.get(imageUrl, {
+        responseType: "arraybuffer",
+        timeout: 10000,
+        headers: { "User-Agent": "Mozilla/5.0" },
+      });
+      res.setHeader("Content-Type", response.headers["content-type"] || "image/jpeg");
+      res.send(Buffer.from(response.data));
+    } catch (err) {
+      res.status(500).send("Failed to fetch image");
+    }
+  });
+
+  // ── 5. Routes ──────────────────────────────────────────────────────────────
   registerOAuthRoutes(app);
 
   app.use(
