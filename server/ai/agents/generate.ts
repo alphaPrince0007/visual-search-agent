@@ -1,45 +1,86 @@
 import { AgentState } from "../state";
-import { ENV } from "../../_core/env";
 import { generateGeminiImageBytes } from "../../_core/gemini";
+import { doImagesBatch, ImageVariant, ProductContext, GroundingData } from "../promptBuilder";
+import { validateProductFidelity } from "../validator";
+import { ENV } from "../../_core/env";
 
 /**
- * Generation Agent — image variations via Gemini ({@link ENV.geminiModelNanoBanana}).
+ * Generation Agent — image variations via the 7-STEP STRICT Composition Engine.
+ * 
+ * 1. Generates 4 professional e-commerce variants.
+ * 2. Mandatory Post-Validation Fidelity Check.
+ * 3. Rejects any output that modifies a single pixel of the product.
  */
 export async function generateNode(state: AgentState): Promise<Partial<AgentState>> {
-  console.log("--- GENERATE AGENT ---");
+  console.log("--- GENERATE AGENT (STRICT ENGINE) ---");
 
-  const description = state.description;
-  if (!description) {
-    console.warn("No description available for image generation. Skipping.");
+  if (!state.description || !state.imagePath) {
+    console.warn("Missing description or imagePath for image generation. Skipping.");
     return { generatedImages: [] };
   }
 
-  const generationPrompt = `Create a high-quality image variation based on the following visual description:
-"${description}"
+  // 1. Prepare Grounding & Context
+  const groundingData: GroundingData = {
+    searchQuery: state.searchQuery,
+    topResultTitles: state.results?.map(r => r.title).filter((t): t is string => !!t),
+    visualMatches: state.results?.map(r => ({ title: r.title, snippet: r.snippet })),
+  };
 
-Style: photorealistic, high detail, professional product photography.`;
+  const ctx: ProductContext = {
+    description: state.description,
+    productName: state.productName,
+    category: state.category,
+    keyFeatures: state.keyFeatures,
+    dominantColor: state.dominantColor,
+    environment: state.environment,
+    groundingData,
+  };
+
+  // 2. Define EXACTLY 4 strict e-commerce variants
+  const variants: ImageVariant[] = [
+    "main",
+    "lifestyle",
+    "specification",
+    "marketing",
+  ];
 
   console.log(
-    `Generating 3 image variations concurrently via Gemini (${ENV.geminiModelNanoBanana})…`
+    `Generating ${variants.length} premium variations concurrently via STRICT Engine…`
   );
 
-  const generationRequests = Array.from({ length: 3 }, (_, i) =>
-    generateGeminiImageBytes(generationPrompt)
-      .then(({ buffer, mimeType }) => {
-        const b64 = buffer.toString("base64");
-        return `data:${mimeType};base64,${b64}`;
-      })
-      .catch((err: Error) => {
-        console.warn(`Generation request ${i + 1} failed: ${err.message}`);
-        return null;
-      })
-  );
+  // 3. Batch Generation + Post-Validation Audit
+  const geminiGenerator = async (prompt: string): Promise<string> => {
+    console.log(`\n[GENERATOR] Using Model: ${ENV.geminiModelNanoBanana || "imagen-3.0-generate-002"}`);
+    const { buffer, mimeType } = await generateGeminiImageBytes(prompt);
+    return `data:${mimeType};base64,${buffer.toString("base64")}`;
+  };
 
-  const settled = await Promise.all(generationRequests);
+  const initialResults = await doImagesBatch(variants, ctx, geminiGenerator);
 
-  const generatedImages = settled.filter((url): url is string => typeof url === "string");
+  console.log(`Initial generation successful: ${initialResults.length}/${variants.length} images.`);
 
-  console.log(`Generated ${generatedImages.length}/3 image variation(s) successfully.`);
+  // 4. STEP 7: FINAL VALIDATION (Audit)
+  const auditTasks = initialResults.map(async (res) => {
+    const audit = await validateProductFidelity(state.imagePath, res.url);
+    if (!audit.success) {
+      console.warn(`[REJECTED] ${res.type}: Fidelity score ${audit.score} (Violations: ${audit.violations.join(", ")})`);
+      return null;
+    }
+    console.log(`[VERIFIED] ${res.type}: Fidelity score ${audit.score} — APPROVED.`);
+    return res;
+  });
 
-  return { generatedImages };
+  const verifiedResults = (await Promise.all(auditTasks))
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  console.log(`\n======================================================`);
+  console.log(`[GENERATE NODE SUMMARY]`);
+  console.log(`- Total Variants Requested: ${variants.length}`);
+  console.log(`- Initial Generations Succeeded: ${initialResults.length}`);
+  console.log(`- Verified Generations Approved: ${verifiedResults.length}`);
+  console.log(`======================================================\n`);
+
+  return { 
+    generatedImages: verifiedResults 
+  };
 }

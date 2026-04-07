@@ -11,13 +11,35 @@ import { debugLog } from "../../_core/debug";
 const VisionOutputSchema = z.object({
   description: z.string(),
   searchQuery: z.string(),
+  productName: z.string().optional(),
+  category: z.string().optional(),
+  keyFeatures: z.array(z.string()).optional(),
+  dominantColor: z.string().optional(),
+  environment: z.string().optional(),
 });
+
+const STRICT_IDENTIFICATION_GUARDRAILS = `
+=====================================================
+STEP 1 — PRODUCT IDENTIFICATION (NO MODIFICATION)
+=====================================================
+
+You are a STRICT image composition engine operating in a controlled production environment.
+Your ONLY task in this node is to extract the 100% visual truth of the product.
+
+ABSOLUTE RULES:
+- Identify the product name and category.
+- Return internally what is visually present.
+- DO NOT modify the image.
+- DO NOT recreate anything.
+- DO NOT enhance or speculate on missing details.
+- DO NOT ignore visible imperfections; describe the product exactly as it is.
+`.trim();
 
 /**
  * Vision Agent — multimodal JSON output via Gemini ({@link ENV.geminiModelText}).
  */
 export async function visionNode(state: AgentState): Promise<Partial<AgentState>> {
-  console.log("--- VISION AGENT ---");
+  console.log("--- VISION AGENT (STRICT IDENTIFICATION) ---");
   debugLog("VISION INPUT", state.imagePath);
 
   if (!state.imagePath) {
@@ -25,8 +47,8 @@ export async function visionNode(state: AgentState): Promise<Partial<AgentState>
     return {};
   }
 
-  if (state.description && state.searchQuery) {
-    console.log("[Vision] Description already populated — skipping inference.");
+  if (state.description && state.searchQuery && state.productName) {
+    console.log("[Vision] State already populated — skipping inference.");
     return {};
   }
 
@@ -59,11 +81,18 @@ export async function visionNode(state: AgentState): Promise<Partial<AgentState>
     imageUrl = `data:${mimeType};base64,${base64Str}`;
   }
 
-  const systemPrompt = `You are an expert visual intelligence assistant.
+  const systemPrompt = `You are a STRICT image composition engine.
+${STRICT_IDENTIFICATION_GUARDRAILS}
+
 Analyze the provided image and respond strictly in JSON format matching the following schema:
 {
-  "description": "A highly detailed description of the image, capturing key subjects, styling, colors, context, brands, and any text present. Make it exhaustive and hyper-useful for deep semantic search.",
-  "searchQuery": "An optimized, concise search query derived strictly from the visual attributes and image description, perfect for passing into an image or product search engine."
+  "description": "The EXACT 'Visual Truth' of the product. Factual, zero-embellishment description of shape, texture, color, and state.",
+  "searchQuery": "An optimized, concise search query for the REAL product.",
+  "productName": "The factual name of the product.",
+  "category": "The specific product category.",
+  "keyFeatures": ["Up to 5 factual visual features strictly from the image."],
+  "dominantColor": "True color of the product.",
+  "environment": "Factual location of the product."
 }`;
 
   console.log(`[Vision] Calling Gemini (${ENV.geminiModelText})…`);
@@ -96,19 +125,22 @@ Analyze the provided image and respond strictly in JSON format matching the foll
     const content = result.response.text();
     if (!content) throw new Error("No response generated from the vision model.");
 
-    const validated = VisionOutputSchema.parse(JSON.parse(content));
+    const parsed = JSON.parse(content);
+    const validated = VisionOutputSchema.parse(parsed);
 
     visionCache.set(cacheKey, validated);
     console.log(`[Cache SET] Vision result cached (key: ${cacheKey})`);
 
-    debugLog("VISION OUTPUT", {
-      description: validated.description,
-      searchQuery: validated.searchQuery
-    });
+    debugLog("VISION OUTPUT", validated);
 
     return {
       description: validated.description,
       searchQuery: validated.searchQuery,
+      productName: validated.productName,
+      category: validated.category,
+      keyFeatures: validated.keyFeatures,
+      dominantColor: validated.dominantColor,
+      environment: validated.environment,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

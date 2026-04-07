@@ -62,6 +62,7 @@ export async function generateGeminiImageBytes(prompt: string): Promise<{
   });
   const raw = await res.text();
   if (!res.ok) {
+    console.error(`❌ [GEMINI] IMAGE GENERATION ERROR: ${res.status} - ${raw}`);
     throw new Error(`Gemini image generation failed: ${res.status} ${raw}`);
   }
   let data: {

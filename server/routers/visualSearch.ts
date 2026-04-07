@@ -81,7 +81,12 @@ export const visualSearchRouter = router({
             imageDescription: finalState.description,
             visualMatches: finalState.rankedResults || finalState.results || [],
             searchQuery: finalState.searchQuery,
-            generatedImages: finalState.generatedImages || []
+            generatedImages: finalState.generatedImages || [],
+            productName: finalState.productName,
+            category: finalState.category,
+            keyFeatures: finalState.keyFeatures,
+            dominantColor: finalState.dominantColor,
+            environment: finalState.environment,
           }
         };
 
@@ -155,7 +160,12 @@ export const visualSearchRouter = router({
           data: {
             visualMatches: finalState.rankedResults || finalState.results || [],
             refinementCount: historyCount + 1,
-            generatedImages: finalState.generatedImages || []
+            generatedImages: finalState.generatedImages || [],
+            productName: finalState.productName,
+            category: finalState.category,
+            keyFeatures: finalState.keyFeatures,
+            dominantColor: finalState.dominantColor,
+            environment: finalState.environment,
           }
         };
       } catch (error) {

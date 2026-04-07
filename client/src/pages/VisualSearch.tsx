@@ -16,12 +16,25 @@ interface VisualMatch {
   score: number;
 }
 
+interface GeneratedImageResult {
+  url: string;
+  name: string;
+  description: string;
+  type: string;
+  keywords: string[];
+}
+
 interface SearchResult {
   searchId?: number;
   imageUrl?: string;
   imageDescription?: string;
   visualMatches: VisualMatch[];
-  generatedImages?: string[];
+  generatedImages?: GeneratedImageResult[];
+  productName?: string;
+  category?: string;
+  keyFeatures?: string[];
+  dominantColor?: string;
+  environment?: string;
 }
 
 export default function VisualSearch() {
@@ -55,9 +68,10 @@ export default function VisualSearch() {
 
       // 2. Add AI Generated Variations
       if (searchResult.generatedImages) {
-        searchResult.generatedImages.forEach((base64, index) => {
-          const data = base64.split(",")[1];
-          folder?.file(`generated_variation_${index + 1}.png`, data, { base64: true });
+        searchResult.generatedImages.forEach((img, index) => {
+          const data = img.url.split(",")[1];
+          const fileName = `${img.name || `generated_${index + 1}`}.png`;
+          folder?.file(fileName, data, { base64: true });
         });
       }
 
@@ -173,13 +187,18 @@ export default function VisualSearch() {
           score: res.score || 0
         }));
 
-        setSearchResult({
-          searchId: data.searchId ?? undefined,
-          imageUrl: data.imageUrl,
-          imageDescription: data.imageDescription ?? undefined,
-          visualMatches: mappedResults,
-          generatedImages: data.generatedImages || [],
-        });
+          setSearchResult({
+            searchId: data.searchId ?? undefined,
+            imageUrl: data.imageUrl,
+            imageDescription: data.imageDescription ?? undefined,
+            visualMatches: mappedResults,
+            generatedImages: data.generatedImages || [],
+            productName: data.productName,
+            category: data.category,
+            keyFeatures: data.keyFeatures,
+            dominantColor: data.dominantColor,
+            environment: data.environment,
+          });
         toast.success("Search completed!");
       } else if (result.success === false && 'error' in result) {
         toast.error(result.error || "Search failed");
@@ -219,11 +238,16 @@ export default function VisualSearch() {
 
         setSearchResult((prev: SearchResult | null) => {
           if (!prev) return null;
-          return {
-            ...prev,
-            visualMatches: mappedResults,
-            generatedImages: data.generatedImages || prev.generatedImages || [],
-          };
+            return {
+              ...prev,
+              visualMatches: mappedResults,
+              generatedImages: data.generatedImages || prev.generatedImages || [],
+              productName: data.productName || prev.productName,
+              category: data.category || prev.category,
+              keyFeatures: data.keyFeatures || prev.keyFeatures,
+              dominantColor: data.dominantColor || prev.dominantColor,
+              environment: data.environment || prev.environment,
+            };
         });
         setRefinementQuery("");
         toast.success("Search refined!");
@@ -343,8 +367,42 @@ export default function VisualSearch() {
                     <CardHeader>
                       <CardTitle className="text-lg">Image Analysis</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-slate-700">{searchResult.imageDescription}</p>
+                    <CardContent className="space-y-4">
+                      {searchResult.productName && (
+                        <div className="flex gap-2 items-center">
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Product:</span>
+                          <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{searchResult.productName}</span>
+                        </div>
+                      )}
+                      <p className="text-slate-700 leading-relaxed">{searchResult.imageDescription}</p>
+                      
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        {searchResult.category && (
+                          <div className="text-xs">
+                            <span className="block text-slate-400 uppercase font-bold mb-1">Category</span>
+                            <span className="text-slate-600 font-medium">{searchResult.category}</span>
+                          </div>
+                        )}
+                        {searchResult.dominantColor && (
+                          <div className="text-xs">
+                            <span className="block text-slate-400 uppercase font-bold mb-1">Dominant Color</span>
+                            <span className="text-slate-600 font-medium">{searchResult.dominantColor}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {searchResult.keyFeatures && searchResult.keyFeatures.length > 0 && (
+                        <div className="mt-4">
+                          <span className="block text-xs text-slate-400 uppercase font-bold mb-2">Key Features</span>
+                          <div className="flex flex-wrap gap-2">
+                            {searchResult.keyFeatures.map((f, i) => (
+                              <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded-md border border-slate-200">
+                                {f}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )}
@@ -420,16 +478,22 @@ export default function VisualSearch() {
                           <Sparkles className="w-4 h-4 text-blue-500" />
                           <h3 className="text-sm font-semibold text-slate-900">AI Generated Variations</h3>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          {searchResult.generatedImages.map((b64, idx) => (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {searchResult.generatedImages.map((img, idx) => (
                             <div key={idx} className="relative group rounded-lg overflow-hidden border border-blue-100 shadow-sm aspect-square bg-slate-50">
                               <img 
-                                src={b64} 
-                                alt={`Generated variation ${idx + 1}`} 
+                                src={img.url} 
+                                alt={img.name} 
+                                title={img.description}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                               />
-                              <div className="absolute top-2 right-2 bg-blue-500/90 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">
-                                AI Variation
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                                <p className="text-white text-[10px] font-medium leading-tight line-clamp-2">
+                                  {img.description}
+                                </p>
+                              </div>
+                              <div className="absolute top-2 right-2 bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight shadow-sm">
+                                {img.type.replace('_', ' ')}
                               </div>
                             </div>
                           ))}

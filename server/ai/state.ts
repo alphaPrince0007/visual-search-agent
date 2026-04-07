@@ -1,4 +1,5 @@
 import { Annotation } from "@langchain/langgraph";
+import { GeneratedImageResult } from "./promptBuilder";
 
 // Strongly-typed interface for results to ensure scalability
 export interface SearchResult {
@@ -17,9 +18,16 @@ export interface AgentState {
   searchQuery: string;
   results: SearchResult[];
   rankedResults: SearchResult[];
-  generatedImages: string[];  // URLs/base64 data-URIs from the generation agent
+  generatedImages: GeneratedImageResult[]; // Rich product variations from the engine
   iterations: number;
   feedback?: string;
+
+  // Intelligent context enhancement fields (populated by vision agent)
+  productName?: string;
+  category?: string;
+  keyFeatures?: string[];
+  dominantColor?: string;
+  environment?: string;
 }
 
 // Map the Interface directly to LangGraph Annotation Channels
@@ -52,8 +60,28 @@ export const StateAnnotation = Annotation.Root({
     reducer: (x: string | undefined, y: string | undefined) => y ?? x,
     default: () => undefined,
   }),
-  generatedImages: Annotation<string[]>({
-    reducer: (x: string[], y: string[]) => y ?? x,
+  generatedImages: Annotation<GeneratedImageResult[]>({
+    reducer: (x: GeneratedImageResult[], y: GeneratedImageResult[]) => y ?? x,
     default: () => [],
+  }),
+  productName: Annotation<string | undefined>({
+    reducer: (x: string | undefined, y: string | undefined) => y ?? x,
+    default: () => undefined,
+  }),
+  category: Annotation<string | undefined>({
+    reducer: (x: string | undefined, y: string | undefined) => y ?? x,
+    default: () => undefined,
+  }),
+  keyFeatures: Annotation<string[] | undefined>({
+    reducer: (x: string[] | undefined, y: string[] | undefined) => y ?? x,
+    default: () => undefined,
+  }),
+  dominantColor: Annotation<string | undefined>({
+    reducer: (x: string | undefined, y: string | undefined) => y ?? x,
+    default: () => undefined,
+  }),
+  environment: Annotation<string | undefined>({
+    reducer: (x: string | undefined, y: string | undefined) => y ?? x,
+    default: () => undefined,
   }),
 });
